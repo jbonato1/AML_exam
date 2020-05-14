@@ -33,8 +33,7 @@ from networks.train_prior_disc import save_prior_dist
 class NC_wrap():
     def __init__(self,dataset,val_data,device,path,load=False,replay=True):
         '''
-        Args:
-        TO DO: complete Args
+           Class to wrapp architecture and training/testing function for the CVPR challenge
         
         '''
         self.load = load
@@ -73,6 +72,9 @@ class NC_wrap():
         
         
     def convert_lab(self,labels,task):
+        """
+        Funtion which map 50 classes to 10 macroclasses. i.e coca cola bottle and sprite bottle belong to bottle macroclass
+        """
         if task!=0:
             case = self.map_lb[str(task)]
             print(case)
@@ -85,6 +87,10 @@ class NC_wrap():
             return labels
         
     def revert_lab(self,labels,task):
+        """
+        function which convert 10 macroclasses to original classes. in each task there is a sigle class for each macroclass. ie task 3 in macroclass of bottle there is 
+        only coca cola bottle. 
+        """
         if task!=0:
             case = self.map_lb[str(task)]
             if case == 'A':
@@ -95,7 +101,13 @@ class NC_wrap():
         else:
             return labels
 
-    def train(self):
+    def train(self)
+        '''
+        algorithm 1 in report
+        
+        collect data from self.dataset and train the architecture: 1 step DIM 2 step classifier as a regularized
+        
+        '''
         acc_time = []
 
         for i, train_batch in enumerate(self.dataset):
@@ -137,7 +149,8 @@ class NC_wrap():
             train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
             valid_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
             dataloaders = {'train':train_loader,'val':valid_loader}
-
+            
+            ####### Set hyperparameters for the training
             if i ==0:        
                 prior = False
                 ep=40
@@ -172,9 +185,9 @@ class NC_wrap():
                 ####################################################################################
                 torch.save(dim_model.state_dict(), self.path + 'weights/weightsDIM_T'+str(i)+'_NC.pt')
 
-            #if i==0:
-#             dataTr,labTr = save_prior_dist(dim_model,train_loader,self.device)
-#             dataCv,labCv = save_prior_dist(dim_model,valid_loader,self.device)
+            ####
+            #Conversion of image into latent space representation for classifier training
+            ####
             dim_model.requires_grad_(False)
             for phase in ['train','val']:
                 dataF = None

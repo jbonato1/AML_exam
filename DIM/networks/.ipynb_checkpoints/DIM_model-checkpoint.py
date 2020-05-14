@@ -9,17 +9,19 @@ from networks.mi_networks import *
 
 
 class DIM_model(nn.Module):
+    '''Dim model used in the CVPR challenge as described in the report:
+    
+    self.encoder -> model_ft
+    self.global_MI -> DNN to embedd global feature vector
+    self.local_MI -> DNN to embedd local feature vectors
+
+    '''
     def __init__(self,batch_s = 32,num_classes =64,feature=False):
         super().__init__()
         
-#         model_ft = pretrainedmodels.__dict__["se_resnext101_32x4d"](num_classes=1000, pretrained='imagenet')
-#         num_ftrs = model_ft.last_linear.in_features
-#         model_ft.last_linear = nn.Linear(num_ftrs, num_classes)
-        
-#         self.encoder = nn.Sequential(*list(model_ft.children())[:5])
-#         self.head =  nn.AdaptiveAvgPool2d((1, 1))
-#         self.head2 = model_ft.last_linear
-        
+        ###
+        # backbone can be changed easilyt with torchvision models
+        ###
         model_ft = models.resnet18(pretrained=True)#resnet18#resnext101_32x8d
         num_ftrs = model_ft.fc.in_features
         model_ft.fc = nn.Linear(num_ftrs, num_classes)

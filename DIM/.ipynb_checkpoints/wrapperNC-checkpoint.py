@@ -9,6 +9,8 @@ import numpy as np
 
 #import torchvision.models as models
 from torch.utils.data.dataloader import DataLoader
+#import torch.nn as nn
+#import torch
 from torchvision import transforms
 
 import matplotlib.pyplot as plt
@@ -20,17 +22,18 @@ from torch.optim import lr_scheduler
 import torch
 import numpy
 
-from networks.DIM_model_Int import *
-
+from networks.DIM_model import *
 from networks.train_nets import *
-from pre_proc.loader import data_split,data_split_Tr_CV,LoadDataset,data_org
-from networks.WSched import GradualWarmupScheduler
+from pre_proc.loader import LoadDataset,data_split,data_split_Tr_CV,LoadFeat
+from pre_proc.transf import Transform 
+from networks.model import classifier
+
+from networks.train_prior_disc import save_prior_dist
 
 class NC_wrap():
     def __init__(self,dataset,val_data,device,path,load=False,replay=True):
         '''
-        Args:
-        TO DO: complete Args
+           Class to wrapp architecture and training/testing function for the CVPR challenge
         
         '''
         self.load = load
@@ -39,7 +42,6 @@ class NC_wrap():
         self.dataset = dataset
         self.val_data = val_data
         
-        ################# transformation for training
         self.tr = transforms.Compose([
     
             transforms.ToPILImage(),
@@ -70,6 +72,9 @@ class NC_wrap():
         
         
     def convert_lab(self,labels,task):
+        """
+        Funtion which map 50 classes to 10 macroclasses. i.e coca cola bottle and sprite bottle belong to bottle macroclass
+        """
         if task!=0:
             case = self.map_lb[str(task)]
             print(case)
@@ -82,6 +87,10 @@ class NC_wrap():
             return labels
         
     def revert_lab(self,labels,task):
+        """
+        function which convert 10 macroclasses to original classes. in each task there is a sigle class for each macroclass. ie task 3 in macroclass of bottle there is 
+        only coca cola bottle. 
+        """
         if task!=0:
             case = self.map_lb[str(task)]
             if case == 'A':
@@ -92,7 +101,13 @@ class NC_wrap():
         else:
             return labels
 
-    def train(self):
+    def train(self)
+        '''
+        algorithm 1 in report
+        
+        collect data from self.dataset and train the architecture: 1 step DIM 2 step classifier as a regularized
+        
+        '''
         acc_time = []
 
         for i, train_batch in enumerate(self.dataset):
@@ -115,10 +130,8 @@ class NC_wrap():
                     np.concatenate((data[coreset], ext_mem[0])),
                     np.concatenate((labels[coreset], ext_mem[1]))]
                 if self.replay:
-                    dataC = np.concatenate((data[index_tr],dataP),axis=0)
-                    labC = np.concatenate((labels[index_tr],labP),axis=0)
-#                     dataC = np.concatenate((data[index_tr], data[index_cv],dataP),axis=0)
-#                     labC = np.concatenate((labels[index_tr],labels[index_cv],labP),axis=0)
+                    dataC = np.concatenate((data[index_tr], data[index_cv],dataP),axis=0)
+                    labC = np.concatenate((labels[index_tr],labels[index_cv],labP),axis=0)
                 else:
                     dataC = np.concatenate((data[index_tr], data[index_cv]),axis=0)
                     labC = np.concatenate((labels[index_tr],labels[index_cv]),axis=0)
@@ -128,84 +141,120 @@ class NC_wrap():
             print("----------- batch {0} -------------".format(i))
             print("Task Label: ", t)
             trC,cvC = data_split_Tr_CV(dataC.shape[0],777)
-            
-            if i ==0:
-                train_set = LoadDataset(dataC,labC,transform=self.tr,indices=trC)
-                val_set = LoadDataset(dataC,labC,transform=self.tr,indices=cvC)
-            else:
-                dataR = data_org(dataP,labP)
-                train_set = LoadDataset(dataC,labC,transform=self.tr,indices=trC,ref=dataR)
-                val_set = LoadDataset(dataC,labC,transform=self.tr,indices=cvC,ref=dataR)
 
+            train_set = LoadDataset(dataC,labC,transform=self.tr,indices=trC)
+            val_set = LoadDataset(dataC,labC,transform=self.tr,indices=cvC)
             print('Training set: {0} \nValidation Set {1}'.format(train_set.__len__(),val_set.__len__()))
-
             batch_size=32
-            batch_sizeV = 32
-            if trC.shape[0]%batch_size==1:
-                batch_size-=1
-
-            if cvC.shape[0]%batch_sizeV==1:
-                batch_sizeV-=1
-
             train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
-            valid_loader = DataLoader(val_set, batch_size=batch_sizeV, shuffle=False)
+            valid_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
             dataloaders = {'train':train_loader,'val':valid_loader}
-
+            
+            ####### Set hyperparameters for the training
             if i ==0:        
                 prior = False
-                ep=20
-                dim_model = DIM_model(batch_s=32,num_classes =128,feature=True,out_class =10)   
+                ep=40
+                dim_model = DIM_model(batch_s=32,num_classes =128,feature=True)   
                 dim_model.to(self.device)
+                classifierM = classifier(n_input=128,n_class=50)
+                classifierM = classifierM.to(self.device)
                 writer = SummaryWriter('runs/experiment_C'+str(i))
                 lr_new = 0.00001
-                
+                lrC=0.0001
+                epC=50
             else:
                 prior = True
-                ep=8
+                ep=6
+                epC=10
                 lr_new =0.000005
-               
+                lrC = 0.00005
 
             optimizer = torch.optim.Adam(dim_model.parameters(),lr=lr_new)
             scheduler = lr_scheduler.StepLR(optimizer,step_size=40,gamma=0.1) #there is also MultiStepLR
 
             tr_dict_enc = {'ep':ep,'writer':writerDIM,'best_loss':1e10,'t_board':True,
-                           'gamma':.5,'beta':.5,'Prior_Flag':prior}    
-            
+                           'gamma':.5,'beta':.5,'Prior_Flag':prior,'discriminator':classifierM}    
+            tr_dict_cl = {'ep':30,'writer':writer,'best_loss':1e10,'t_board':True,'gamma':1}#30
 
             if i==0 and self.load:
                 print('Load DIM model weights first step')
                 dim_model.load_state_dict(torch.load(self.path + 'weights/weightsDIM_T0_NC128.pt'))
             else:
                 ############################## Train Encoder########################################
-                dim_model,self.stats = trainEnc_MIadv(self.stats,dim_model, optimizer, scheduler,dataloaders,self.device,tr_dict_enc)
+                dim_model,self.stats = trainEnc_MI(self.stats,dim_model, optimizer, scheduler,dataloaders,self.device,tr_dict_enc)
                 ####################################################################################
-                torch.save(dim_model.state_dict(), self.path + 'weights/weightsDIM_T'+str(i)+'_NC128.pt')
+                torch.save(dim_model.state_dict(), self.path + 'weights/weightsDIM_T'+str(i)+'_NC.pt')
 
+            ####
+            #Conversion of image into latent space representation for classifier training
+            ####
+            dim_model.requires_grad_(False)
+            for phase in ['train','val']:
+                dataF = None
+                labF = None
+                for inputs, labels in dataloaders[phase]:
+                    torch.cuda.empty_cache()
+                    if len(inputs.shape)==5:
+
+                        inputs = inputs[:,:,:,:,0].to(self.device)
+                    else:
+                        inputs = inputs.to(self.device)
+
+                    _,_,pred = dim_model(inputs)
+                    pred_l = pred.data.cpu().numpy()
+                    if dataF is None:
+                        dataF = pred_l
+                        labF = labels.data.cpu().numpy()
+                    else:
+                        dataF = np.concatenate((dataF,pred_l),axis=0)
+                        labF = np.concatenate((labF,labels.data.cpu().numpy()),axis=0)
+
+                if phase == 'train':
+                    dataTr_f = dataF
+                    labTr_f  = labF
+                else:
+                    dataCv_f = dataF
+                    labCv_f = labF
+                
+            dim_model.requires_grad_(True)
+            train_set = LoadFeat(dataTr_f,labTr_f)
+            val_set = LoadFeat(dataCv_f,labCv_f)
+            batch_size=32
+
+            train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
+            valid_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
+            dataloaderC = {'train':train_loader,'val':valid_loader}
+
+            optimizerC = torch.optim.Adam(classifierM.parameters(),lr=lrC)
+            schedulerC = lr_scheduler.StepLR(optimizerC,step_size=40,gamma=0.1)
+            classifierM.requires_grad_(True)
+
+            ############################## Train Classifier ########################################
+            classifierM,self.stats = train_classifier(self.stats,classifierM, optimizerC, schedulerC,dataloaderC,self.device,tr_dict_cl)
+            #################################### #################################### ##############
+
+            torch.save(classifierM.state_dict(), self.path + 'weights/weightsC_T'+str(i)+'_NC.pt')
             
             #### Cross_val Testing
             score = []
             for task_i in range(len(self.val_data)):
-
                 
                 data_test = self.val_data[task_i][0][0]
                 labels_test = self.val_data[task_i][0][1]
-
-                batch_size = 32
-                if data_test.shape[0]%batch_size==1:
-                    batch_size-=1
-
                 task = task_i
+
                 test_set = LoadDataset(data_test,labels_test,transform=self.trT)
+                batch_size=32
                 test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
-                
                 score_t= []
                 dim_model.eval()
-                
+                classifierM.eval()
                 for inputs, labels in test_loader:
                     torch.cuda.empty_cache()
                     inputs = inputs.to(self.device)
                     labels = labels.to(self.device) 
-                    _,_,_,pred =dim_model(inputs)
+                    _,_,ww =dim_model(inputs)
+                    pred = classifierM(ww)
                     pred_l = pred.data.cpu().numpy()
                     pred_l = np.argmax(pred_l,axis=1)
                     out_lab = self.revert_lab(pred_l,task)
@@ -217,39 +266,39 @@ class NC_wrap():
             del test_set,test_loader
             
         self.dim_model = dim_model
+        self.classifierM = classifierM
         acc_time = np.asarray(acc_time)
         return self.stats,acc_time
         
     def test(self,test_data,standalone=False):
         
         if standalone:
-            self.dim_model = DIM_model(batch_s=32,num_classes =128,feature=True,out_class = 50)
+            self.dim_model = DIM_model(batch_s=32,num_classes =128,feature=True)   
             self.dim_model.to(self.device)
-            self.dim_model.load_state_dict(torch.load(self.path + 'weights/weightsDIM_T0_NC128.pt'))
+            
+            self.classifierM = classifier(n_input = 128,n_class=50)
+            self.classifierM = self.classifierM.to(self.device)  
+            
+            self.dim_model.load_state_dict(torch.load(self.path + 'weights/weightsDIM_T0_NC.pt'))
+            self.classifierM.load_state_dict(torch.load(self.path + 'weights/weightsC_T0_NC.pt'))
 
-        out = None
-        for task_i in range(len(test_data)):
-            batch_size=32
-
-            data_test = test_data[task_i][0][0]
-            task = task_i
-            test_set = LoadDataset(data_test,transform=self.trT)
-            test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
-
-            self.dim_model.eval()
-
-            for inputs in test_loader:
-                torch.cuda.empty_cache()
-                inputs = inputs.to(self.device)
-                
-                _,_,_,pred =self.dim_model(inputs)
-                pred_l = pred.data.cpu().numpy()
-                pred_l = np.argmax(pred_l,axis=1)
-                out_lab = self.revert_lab(pred_l,task)
-
-                if out is None:
-                    out = out_lab
-                else:
-                    out = np.concatenate((out,out_lab),axis=0)      
         
-        return out
+        test_set = LoadDataset(test_data[0][0][0],transform=None)
+        batch_size=100
+        test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
+        score= []
+        self.dim_model.eval()
+        self.classifierM.eval()
+        for inputs in test_loader:
+            torch.cuda.empty_cache()
+            inputs = inputs.to(self.device)
+            _,_,ww =self.dim_model(inputs)
+            pred = self.classifierM(ww)
+            pred_l = pred.data.cpu().numpy()
+            pred_l = np.argmax(pred_l,axis=1)
+            out_lab = self.revert_lab(pred_l,task)
+            if score is None:
+                score = out_lab
+            else:
+                score = np.concatenate((score,out_lab),axis=0)      
+        return score

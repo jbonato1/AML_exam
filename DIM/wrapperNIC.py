@@ -23,8 +23,7 @@ from networks.train_prior_disc import save_prior_dist
 class NIC_wrap():
     def __init__(self,dataset,val_data,device,path,load=False,replay=True):
         '''
-        Args:
-        TO DO: complete Args
+        Class to wrapp architecture and training/testing function for the CVPR challenge
         
         '''
         self.load = load
@@ -64,6 +63,12 @@ class NIC_wrap():
         self.path = path 
         
     def train(self):
+        '''
+        algorithm 2 in report
+        
+        collect data from self.dataset and train the architecture: 1 step DIM 2 step classifier as a regularized
+        
+        '''
         acc_time = [0]
         data_test = self.val_data[0][0][0]
         labels_test = self.val_data[0][0][1]
@@ -112,8 +117,7 @@ class NIC_wrap():
                     dataP = ext_mem[0]
                     labP = ext_mem[1]
                     idx_P = np.random.choice(np.arange(dataP.shape[0]),int(0.33*dataP.shape[0]))
-                    #dataC = np.concatenate((data_cur[index_tr], data_cur[index_cv],dataP),axis=0)
-                    #labC = np.concatenate((labels_cur[index_tr],labels_cur[index_cv],labP),axis=0)
+
                     
                     #### 20% op replay 20% of data cur and all datat
                     if i==390:
@@ -171,7 +175,7 @@ class NIC_wrap():
                 train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
                 valid_loader = DataLoader(val_set, batch_size=batch_sizeV, shuffle=False)
                 dataloaders = {'train':train_loader,'val':valid_loader}
-
+                ####### Set hyperparameters for the training
                 if i ==0:        
                     prior = False
                     ep=30
@@ -208,8 +212,9 @@ class NIC_wrap():
                         torch.save(dim_model.state_dict(),self.path+ 'weights/weightsDIM_T'+str(i)+'_nic.pt')
 
                 
-                #dataTr,labTr = save_prior_dist(dim_model,train_loader,self.device)
-                #dataCv,labCv = save_prior_dist(dim_model,valid_loader,self.device)
+                ####
+                #Conversion of image into latent space representation for classifier training
+                ####
                 dim_model.requires_grad_(False)
                 for phase in ['train','val']:
                     dataF = None

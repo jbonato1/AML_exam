@@ -47,8 +47,9 @@ def compute_loss(pred,y,metrics):
 #### Eventually think about a generale trainer class
 
 def trainEnc_MI(stats,model, optimizer, scheduler,dataloaders,device,kwargs):
-    """This funcion performs training of DIM local version without prior distrib. It can be wrapped into the DNN
-       module as a class function  
+    """This funcion performs training of DIM local version without prior distrib. The classifier can be wrapped into the model
+    using the prior flag, in kwargs dictionary there are othe hyperparameters used for the training. Also tensorbord is available
+    
     """
     num_epochs=kwargs['ep']
     writer=kwargs['writer']
@@ -165,8 +166,8 @@ def trainEnc_MI(stats,model, optimizer, scheduler,dataloaders,device,kwargs):
     return model,stats
 
 def train_classifier(stats,model, optimizer, scheduler,dataloaders,device,kwargs):
-    """This funcion performs training of classifier HEAD. It can be wrapped into the DNN
-       module as a class function  
+    """This funcion performs training of classifier HEAD. In kwargs dictionary there are othe hyperparameters used for the training.
+    Also tensorbord is available
     """
     
     num_epochs=kwargs['ep']

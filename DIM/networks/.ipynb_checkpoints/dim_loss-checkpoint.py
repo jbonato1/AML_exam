@@ -8,7 +8,8 @@ import torch
 import torch.nn.functional as F
 import sys
 
-from networks.misc import log_sum_exp
+sys.path.append('../')
+from func.misc import log_sum_exp
 
 
 
